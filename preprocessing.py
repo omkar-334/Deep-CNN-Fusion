@@ -17,9 +17,9 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-# nltk.download("stopwords")
-# nltk.download("punkt_tab")
-# nltk.download("wordnet")
+nltk.download("stopwords")
+nltk.download("punkt_tab")
+nltk.download("wordnet")
 
 table = str.maketrans("", "", string.punctuation)
 stop_words = set(stopwords.words("english"))
@@ -130,17 +130,16 @@ features and patterns."""
 import cv2
 import numpy as np
 from deepface import DeepFace
+from keras._tf_keras.keras.preprocessing.image import ImageDataGenerator
 
-# from keras._tf_keras.keras.preprocessing.image import ImageDataGenerator
-
-# datagen = ImageDataGenerator(
-#     rotation_range=20,
-#     width_shift_range=0.2,
-#     height_shift_range=0.2,
-#     zoom_range=0.2,
-#     horizontal_flip=True,
-#     rescale=1.0 / 255,
-# )
+datagen = ImageDataGenerator(
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    rescale=1.0 / 255,
+)
 
 
 def extract_frames(video_path, interval=1):
@@ -163,7 +162,18 @@ def extract_frames(video_path, interval=1):
 
 def detect_and_crop_face(frame):
     detected_face = DeepFace.extract_faces(frame, detector_backend="opencv", enforce_detection=False)
-    gray_face = cv2.cvtColor(detected_face, cv2.COLOR_BGR2GRAY)
+    largest_face = None
+    for face in detected_face:
+        if largest_face is None:
+            largest_face = face
+        elif face["confidence"] > largest_face["confidence"]:
+            largest_face = face
+
+    face_image = largest_face["face"]
+    if face_image.dtype != np.uint8:
+        face_image = (face_image * 255).astype(np.uint8)
+
+    gray_face = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
     return gray_face
 
 
@@ -185,15 +195,12 @@ def preprocess_video(filepath):
     preprocessed_images = []
 
     for frame in frames:
-        try:
-            gray_face = detect_and_crop_face(frame)
-        except:
-            continue
+        gray_face = detect_and_crop_face(frame)
 
-        final_image = sharpen_and_resize_image(gray_face)
-        if final_image is not None:
-            preprocessed_images.append(final_image)
-
-    input_data = np.array(preprocessed_images).reshape(-1, 48, 48, 1)
-    input_data = input_data / 255.0
-    return input_data, frames
+        if gray_face is not None:
+            final_image = sharpen_and_resize_image(gray_face)
+            if final_image is not None:
+                final_image = final_image / 255.0
+                final_image = final_image.reshape(48, 48, 1)
+                preprocessed_images.append(final_image)
+    return np.array(preprocessed_images)
